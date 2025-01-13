@@ -4,7 +4,7 @@ It is a incomplete simple git implementation in rust for learning purposes.
 
 # Testing locally
 
-The `cargo run` script is expected to operate on the `.git` folder inside the
+The `cargo run` command is expected to operate on the `.git` folder inside the
 current working directory. If you're running this inside the root of this
 repository, you might end up accidentally damaging repository's `.git`
 folder.

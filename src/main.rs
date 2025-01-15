@@ -2,7 +2,7 @@ use anyhow;
 use anyhow::Context;
 use clap::{Parser, Subcommand};
 use flate2;
-use hex;
+use hex::{self, FromHex};
 use sha1::{Digest, Sha1};
 use std::fs;
 use std::io::prelude::*;
@@ -29,9 +29,21 @@ enum Commands {
         #[clap(short = 'w')]
         object: String,
     },
+    LsTree {
+        /// list only filenames
+        #[clap(long = "name-only")]
+        tree_hash: String,
+    },
 }
 
-fn decode_reader(bytes: Vec<u8>) -> anyhow::Result<String> {
+#[derive(Debug)]
+struct TreeElement<'a> {
+    mode: &'a str,
+    name: &'a str,
+    sha1: [u8; 20],
+}
+
+fn decode_reader(bytes: &[u8]) -> anyhow::Result<String> {
     let mut z = flate2::read::ZlibDecoder::new(&bytes[..]);
     let mut s = String::new();
     z.read_to_string(&mut s)?;
@@ -52,7 +64,7 @@ fn main() -> anyhow::Result<()> {
             let hash = object.as_str();
             assert!(hash.len() == 40, "Hash is not 40 characters long!!!");
             let blob = std::fs::read(format!(".git/objects/{}/{}", &hash[..2], &hash[2..]))?;
-            let decoded_str = decode_reader(blob)?;
+            let decoded_str = decode_reader(&blob)?;
             let content = &decoded_str[decoded_str.find('\0').unwrap() + 1..];
             print!("{content}");
         }
@@ -87,6 +99,34 @@ fn main() -> anyhow::Result<()> {
             zlib.write_all(&header_plus_content)?;
             let compressed = zlib.finish()?;
             f.write_all(&compressed)?;
+        }
+        Commands::LsTree { tree_hash } => {
+            let hash = tree_hash.as_str();
+            assert!(hash.len() == 40, "Hash is not 40 characters long!!!");
+            let blob = std::fs::read(format!(".git/objects/{}/{}", &hash[..2], &hash[2..]))?;
+            let decoded_str = decode_reader(&blob)?;
+            dbg!(&decoded_str);
+            if &decoded_str[..decoded_str.find(' ').unwrap()] != "tree" {
+                anyhow::bail!("fatal: not a tree object");
+            }
+            if &decoded_str[decoded_str.find(' ').unwrap() + 1..decoded_str.find('\0').unwrap()]
+                == "0"
+            {
+                return anyhow::Ok(());
+            }
+            let tree_hashes = &decoded_str[decoded_str.find('\0').unwrap() + 1..];
+            let splited: Vec<&str> = tree_hashes.split('\0').collect();
+            let mut vec_tree_elems: Vec<TreeElement> = vec![];
+            for tree_item in splited.chunks(2) {
+                let sha1 = <[u8; 20]>::from_hex(tree_item[1])?;
+                vec_tree_elems.push(TreeElement {
+                    mode: tree_item[0].split(' ').next().unwrap(),
+                    name: tree_item[0].split(' ').skip(1).next().unwrap(),
+                    sha1,
+                });
+            }
+            vec_tree_elems.sort_by(|a, b| a.name.cmp(b.name));
+            print!("{:#?}", vec_tree_elems);
         }
     }
 

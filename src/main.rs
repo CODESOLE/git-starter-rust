@@ -33,6 +33,7 @@ enum Commands {
     LsTree {
         /// list only filenames
         #[clap(long = "name-only")]
+        no: bool,
         tree_hash: String,
     },
 }
@@ -107,7 +108,7 @@ fn main() -> anyhow::Result<()> {
             let compressed = zlib.finish()?;
             f.write_all(&compressed)?;
         }
-        Commands::LsTree { tree_hash } => {
+        Commands::LsTree { no, tree_hash } => {
             let hash = tree_hash.as_str();
             assert!(hash.len() == 40, "Hash is not 40 characters long!!!");
             let tree_object = std::fs::read(format!(".git/objects/{}/{}", &hash[..2], &hash[2..]))?;
@@ -157,17 +158,23 @@ fn main() -> anyhow::Result<()> {
                 rest_raw_u8 = &rest_raw_u8[first_nul_byte + 21..];
             }
             vec_tree_elems.sort_by(|a, b| a.name.cmp(&b.name));
+            if *no == true {
+                for elm in vec_tree_elems.iter() {
+                    print!("{}\n", elm.name);
+                }
+                return anyhow::Ok(());
+            }
             for elm in vec_tree_elems.iter() {
                 if elm.mode.as_str().cmp("40000") == Ordering::Equal {
                     print!(
-                        "{:<7} tree {} {}\n",
+                        "{:<6} tree {}    {}\n",
                         elm.mode,
                         hex::encode(elm.sha1),
                         elm.name
                     );
                 } else {
                     print!(
-                        "{:<7} blob {} {}\n",
+                        "{:<6} blob {}    {}\n",
                         elm.mode,
                         hex::encode(elm.sha1),
                         elm.name

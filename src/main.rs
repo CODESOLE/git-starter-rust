@@ -2,8 +2,9 @@ use anyhow;
 use anyhow::Context;
 use clap::{Parser, Subcommand};
 use flate2;
-use hex::{self, FromHex};
+use hex::{self};
 use sha1::{Digest, Sha1};
+use std::cmp::Ordering;
 use std::fs;
 use std::io::prelude::*;
 
@@ -37,16 +38,22 @@ enum Commands {
 }
 
 #[derive(Debug)]
-struct TreeElement<'a> {
-    mode: &'a str,
-    name: &'a str,
+struct TreeElement {
+    mode: String,
+    name: String,
     sha1: [u8; 20],
 }
 
 fn decode_reader(bytes: &[u8]) -> anyhow::Result<String> {
-    let mut z = flate2::read::ZlibDecoder::new(&bytes[..]);
+    let mut z = flate2::read::ZlibDecoder::new(bytes);
     let mut s = String::new();
     z.read_to_string(&mut s)?;
+    anyhow::Ok(s)
+}
+fn decode_reader_raw(bytes: &[u8]) -> anyhow::Result<Vec<u8>> {
+    let mut z = flate2::read::ZlibDecoder::new(bytes);
+    let mut s = Vec::new();
+    z.read_to_end(&mut s)?;
     anyhow::Ok(s)
 }
 
@@ -103,30 +110,70 @@ fn main() -> anyhow::Result<()> {
         Commands::LsTree { tree_hash } => {
             let hash = tree_hash.as_str();
             assert!(hash.len() == 40, "Hash is not 40 characters long!!!");
-            let blob = std::fs::read(format!(".git/objects/{}/{}", &hash[..2], &hash[2..]))?;
-            let decoded_str = decode_reader(&blob)?;
-            dbg!(&decoded_str);
-            if &decoded_str[..decoded_str.find(' ').unwrap()] != "tree" {
+            let tree_object = std::fs::read(format!(".git/objects/{}/{}", &hash[..2], &hash[2..]))?;
+            let decoded_str = decode_reader_raw(&tree_object)?;
+            //dbg!(&decoded_str);
+            if &decoded_str[..4] != b"tree" {
                 anyhow::bail!("fatal: not a tree object");
             }
-            if &decoded_str[decoded_str.find(' ').unwrap() + 1..decoded_str.find('\0').unwrap()]
-                == "0"
-            {
+            let first_nul_byte = decoded_str
+                .iter()
+                .enumerate()
+                .find(|&x| *x.1 == 0x0)
+                .unwrap()
+                .0;
+            let tree_sz = &decoded_str[5..first_nul_byte];
+            if tree_sz == b"0" {
                 return anyhow::Ok(());
             }
-            let tree_hashes = &decoded_str[decoded_str.find('\0').unwrap() + 1..];
-            let splited: Vec<&str> = tree_hashes.split('\0').collect();
+            let mut rest_raw_u8 = &decoded_str[first_nul_byte + 1..]; // <mode> <name>\0<sha1_20b>...
+
             let mut vec_tree_elems: Vec<TreeElement> = vec![];
-            for tree_item in splited.chunks(2) {
-                let sha1 = <[u8; 20]>::from_hex(tree_item[1])?;
+            loop {
+                let first_space = rest_raw_u8
+                    .iter()
+                    .enumerate()
+                    .find(|&x| *x.1 == 0x20)
+                    .unwrap()
+                    .0;
+                let first_nul_byte = rest_raw_u8
+                    .iter()
+                    .enumerate()
+                    .find(|&x| *x.1 == 0x0)
+                    .unwrap()
+                    .0;
+                let mode = String::from_utf8_lossy(&rest_raw_u8[..first_space]).to_string();
+                let name = String::from_utf8_lossy(&rest_raw_u8[first_space + 1..first_nul_byte])
+                    .to_string();
+                let sha1 = &rest_raw_u8[first_nul_byte + 1..first_nul_byte + 21];
                 vec_tree_elems.push(TreeElement {
-                    mode: tree_item[0].split(' ').next().unwrap(),
-                    name: tree_item[0].split(' ').skip(1).next().unwrap(),
-                    sha1,
+                    mode,
+                    name,
+                    sha1: sha1[..].try_into().unwrap(),
                 });
+                if first_nul_byte + 21 >= rest_raw_u8.len() {
+                    break;
+                }
+                rest_raw_u8 = &rest_raw_u8[first_nul_byte + 21..];
             }
-            vec_tree_elems.sort_by(|a, b| a.name.cmp(b.name));
-            print!("{:#?}", vec_tree_elems);
+            vec_tree_elems.sort_by(|a, b| a.name.cmp(&b.name));
+            for elm in vec_tree_elems.iter() {
+                if elm.mode.as_str().cmp("40000") == Ordering::Equal {
+                    print!(
+                        "{:<7} tree {} {}\n",
+                        elm.mode,
+                        hex::encode(elm.sha1),
+                        elm.name
+                    );
+                } else {
+                    print!(
+                        "{:<7} blob {} {}\n",
+                        elm.mode,
+                        hex::encode(elm.sha1),
+                        elm.name
+                    );
+                }
+            }
         }
     }
 

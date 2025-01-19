@@ -1,14 +1,14 @@
-use anyhow::{self};
 use anyhow::Context;
+use anyhow::{self};
 use clap::{Parser, Subcommand};
 use flate2;
 use hex::{self};
 use sha1::{Digest, Sha1};
 use std::cmp::Ordering;
-use std::fs::DirEntry;
-use std::path::Path;
 use std::fs;
+use std::fs::DirEntry;
 use std::io::prelude::*;
+use std::path::Path;
 
 #[derive(Parser)]
 #[command(name = "git-starter-rust")]
@@ -186,24 +186,26 @@ fn main() -> anyhow::Result<()> {
         }
         Commands::WriteTree => {
             let mut _entry_and_sha: Vec<TreeFileObject> = vec![];
-            visit_dirs(Path::new("."), &|x| println!("{}", x.file_name().into_string().unwrap()))?;
-        },
+            visit_dirs(Path::new("."), &|x| {
+                println!("{}", x.file_name().into_string().unwrap())
+            })?;
+        }
     }
 
     anyhow::Ok(())
 }
 
 enum TreeFileObject<'a> {
-    Tree(&'a Path, Vec<u8>, [u8;40]),
-    File(&'a Path, Vec<u8>, [u8;40]),
+    Tree(&'a Path, Vec<u8>, [u8; 40]),
+    File(&'a Path, Vec<u8>, [u8; 40]),
 }
 
 fn visit_dirs(dir: &Path, cb: &dyn Fn(&DirEntry)) -> anyhow::Result<()> {
     if dir.is_dir() {
-        if dir.file_name().unwrap().to_str().unwrap() == ".git" {
-            return anyhow::Ok(());
-        }
         for entry in fs::read_dir(dir)? {
+            if entry.as_ref().unwrap().file_name().to_str().unwrap() == ".git" {
+                continue;
+            }
             let entry = entry?;
             let path = entry.path();
             if path.is_dir() {

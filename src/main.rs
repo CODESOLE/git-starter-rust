@@ -1,10 +1,12 @@
-use anyhow;
+use anyhow::{self};
 use anyhow::Context;
 use clap::{Parser, Subcommand};
 use flate2;
 use hex::{self};
 use sha1::{Digest, Sha1};
 use std::cmp::Ordering;
+use std::fs::DirEntry;
+use std::path::Path;
 use std::fs;
 use std::io::prelude::*;
 
@@ -20,6 +22,7 @@ struct Cli {
 #[derive(Subcommand)]
 enum Commands {
     Init,
+    WriteTree,
     CatFile {
         /// pretty-print <object> content
         #[clap(short = 'p')]
@@ -113,7 +116,6 @@ fn main() -> anyhow::Result<()> {
             assert!(hash.len() == 40, "Hash is not 40 characters long!!!");
             let tree_object = std::fs::read(format!(".git/objects/{}/{}", &hash[..2], &hash[2..]))?;
             let decoded_str = decode_reader_raw(&tree_object)?;
-            //dbg!(&decoded_str);
             if &decoded_str[..4] != b"tree" {
                 anyhow::bail!("fatal: not a tree object");
             }
@@ -182,7 +184,34 @@ fn main() -> anyhow::Result<()> {
                 }
             }
         }
+        Commands::WriteTree => {
+            let mut _entry_and_sha: Vec<TreeFileObject> = vec![];
+            visit_dirs(Path::new("."), &|x| println!("{}", x.file_name().into_string().unwrap()))?;
+        },
     }
 
+    anyhow::Ok(())
+}
+
+enum TreeFileObject<'a> {
+    Tree(&'a Path, Vec<u8>, [u8;40]),
+    File(&'a Path, Vec<u8>, [u8;40]),
+}
+
+fn visit_dirs(dir: &Path, cb: &dyn Fn(&DirEntry)) -> anyhow::Result<()> {
+    if dir.is_dir() {
+        if dir.file_name().unwrap().to_str().unwrap() == ".git" {
+            return anyhow::Ok(());
+        }
+        for entry in fs::read_dir(dir)? {
+            let entry = entry?;
+            let path = entry.path();
+            if path.is_dir() {
+                visit_dirs(&path, cb)?;
+            } else {
+                cb(&entry);
+            }
+        }
+    }
     anyhow::Ok(())
 }

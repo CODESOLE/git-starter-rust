@@ -31,6 +31,7 @@ enum Commands {
     HashObject {
         /// write object to object database
         #[clap(short = 'w')]
+        write: bool,
         object: String,
     },
     LsTree {
@@ -79,8 +80,8 @@ fn main() -> anyhow::Result<()> {
             let content = &decoded_str[decoded_str.find('\0').unwrap() + 1..];
             print!("{content}");
         }
-        Commands::HashObject { object: write } => {
-            let mut file = fs::File::open(write)?;
+        Commands::HashObject { write, object } => {
+            let mut file = fs::File::open(object)?;
             let mut file_content = Vec::new();
             file.read_to_end(&mut file_content)?;
             let header_plus_content: Vec<u8> = format!("blob {}\0", file_content.len())
@@ -94,22 +95,25 @@ fn main() -> anyhow::Result<()> {
             let digest: &[u8] = &hash.finalize();
             let hash_str = hex::encode(digest);
             println!("{}", &hash_str);
-            fs::create_dir_all(format!(".git/objects/{}", &hash_str[..2])).context("creat_dir")?;
-            let mut f = fs::OpenOptions::new()
-                .write(true)
-                .create(true)
-                .truncate(true)
-                .open(format!(
-                    ".git/objects/{}/{}",
-                    &hash_str[..2],
-                    &hash_str[2..]
-                ))
-                .context("File Open")?;
-            let mut zlib =
-                flate2::write::ZlibEncoder::new(Vec::new(), flate2::Compression::default());
-            zlib.write_all(&header_plus_content)?;
-            let compressed = zlib.finish()?;
-            f.write_all(&compressed)?;
+            if *write == true {
+                fs::create_dir_all(format!(".git/objects/{}", &hash_str[..2]))
+                    .context("creat_dir")?;
+                let mut f = fs::OpenOptions::new()
+                    .write(true)
+                    .create(true)
+                    .truncate(true)
+                    .open(format!(
+                        ".git/objects/{}/{}",
+                        &hash_str[..2],
+                        &hash_str[2..]
+                    ))
+                    .context("File Open")?;
+                let mut zlib =
+                    flate2::write::ZlibEncoder::new(Vec::new(), flate2::Compression::default());
+                zlib.write_all(&header_plus_content)?;
+                let compressed = zlib.finish()?;
+                f.write_all(&compressed)?;
+            }
         }
         Commands::LsTree { no, tree_hash } => {
             let hash = tree_hash.as_str();

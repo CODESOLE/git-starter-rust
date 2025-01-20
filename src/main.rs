@@ -84,18 +84,10 @@ fn main() -> anyhow::Result<()> {
             let mut file = fs::File::open(object)?;
             let mut file_content = Vec::new();
             file.read_to_end(&mut file_content)?;
-            let header_plus_content: Vec<u8> = format!("blob {}\0", file_content.len())
-                .as_bytes()
-                .iter()
-                .chain(file_content.iter())
-                .cloned()
-                .collect();
-            let mut hash = Sha1::new();
-            hash.update(&file_content);
-            let digest: &[u8] = &hash.finalize();
-            let hash_str = hex::encode(digest);
+            let hash_str = hash_object_blob(&file_content)?;
             println!("{}", &hash_str);
             if *write == true {
+                let compressed = compress_object_blob(&file_content)?;
                 fs::create_dir_all(format!(".git/objects/{}", &hash_str[..2]))
                     .context("creat_dir")?;
                 let mut f = fs::OpenOptions::new()
@@ -108,10 +100,6 @@ fn main() -> anyhow::Result<()> {
                         &hash_str[2..]
                     ))
                     .context("File Open")?;
-                let mut zlib =
-                    flate2::write::ZlibEncoder::new(Vec::new(), flate2::Compression::default());
-                zlib.write_all(&header_plus_content)?;
-                let compressed = zlib.finish()?;
                 f.write_all(&compressed)?;
             }
         }
@@ -202,6 +190,31 @@ fn main() -> anyhow::Result<()> {
 enum TreeFileObject<'a> {
     Tree(&'a Path, Vec<u8>, [u8; 40]),
     File(&'a Path, Vec<u8>, [u8; 40]),
+}
+
+fn compress_object_blob(file_content: &[u8]) -> anyhow::Result<Vec<u8>> {
+    let header_plus_content: Vec<u8> = format!("blob {}\0", file_content.len())
+        .as_bytes()
+        .iter()
+        .chain(file_content.iter())
+        .cloned()
+        .collect();
+    let mut zlib = flate2::write::ZlibEncoder::new(Vec::new(), flate2::Compression::default());
+    zlib.write_all(&header_plus_content)?;
+    anyhow::Ok(zlib.finish()?)
+}
+
+fn hash_object_blob(file_content: &[u8]) -> anyhow::Result<String> {
+    let header_plus_content: Vec<u8> = format!("blob {}\0", file_content.len())
+        .as_bytes()
+        .iter()
+        .chain(file_content.iter())
+        .cloned()
+        .collect();
+    let mut hash = Sha1::new();
+    hash.update(&header_plus_content);
+    let digest: &[u8] = &hash.finalize();
+    anyhow::Ok(hex::encode(digest))
 }
 
 fn visit_dirs(dir: &Path, cb: &dyn Fn(&DirEntry)) -> anyhow::Result<()> {

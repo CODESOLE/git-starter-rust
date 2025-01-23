@@ -177,10 +177,14 @@ fn main() -> anyhow::Result<()> {
             }
         }
         Commands::WriteTree => {
-            let mut _entry_and_sha: Vec<TreeFileObject> = vec![];
-            visit_dirs(Path::new("."), &|x| {
-                println!("{}", x.file_name().into_string().unwrap())
+            //let mut entry_and_sha: Vec<TreeFileObject> = vec![];
+            let mut entry_and_sha: Vec<String> = vec![];
+            visit_dirs(Path::new("."), &mut|x| {
+                entry_and_sha.push(x.file_name().into_string().unwrap())
             })?;
+            for x in entry_and_sha.iter() {
+                println!("{}", x);
+            }
         }
     }
 
@@ -217,7 +221,7 @@ fn hash_object_blob(file_content: &[u8]) -> anyhow::Result<String> {
     anyhow::Ok(hex::encode(digest))
 }
 
-fn visit_dirs(dir: &Path, cb: &dyn Fn(&DirEntry)) -> anyhow::Result<()> {
+fn visit_dirs(dir: &Path, cb: &mut impl FnMut(&DirEntry)) -> anyhow::Result<()> {
     if dir.is_dir() {
         for entry in fs::read_dir(dir)? {
             if entry.as_ref().unwrap().file_name().to_str().unwrap() == ".git" {

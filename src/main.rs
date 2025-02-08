@@ -208,7 +208,7 @@ fn compress_object_blob(file_content: &[u8]) -> anyhow::Result<Vec<u8>> {
     anyhow::Ok(zlib.finish()?)
 }
 
-fn hash_object_blob(file_content: &[u8]) -> anyhow::Result<String> {
+fn hash_object_blob(file_content: &[u8]) -> anyhow::Result<[u8; 40]> {
     let header_plus_content: Vec<u8> = format!("blob {}\0", file_content.len())
         .as_bytes()
         .iter()
@@ -218,7 +218,7 @@ fn hash_object_blob(file_content: &[u8]) -> anyhow::Result<String> {
     let mut hash = Sha1::new();
     hash.update(&header_plus_content);
     let digest: &[u8] = &hash.finalize();
-    anyhow::Ok(hex::encode(digest))
+    anyhow::Ok(hex::encode(digest).as_bytes().try_into()?)
 }
 
 fn visit_dirs(dir: &Path, cb: &mut impl FnMut(&DirEntry)) -> anyhow::Result<()> {

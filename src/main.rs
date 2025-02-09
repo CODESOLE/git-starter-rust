@@ -89,11 +89,8 @@ fn main() -> anyhow::Result<()> {
             println!("{}", hash_str);
             if *write == true {
                 let compressed = compress_object_blob(&file_content)?;
-                fs::create_dir_all(format!(
-                    ".git/objects/{}",
-                    &hash_str[..2]
-                ))
-                .context("creat_dir")?;
+                fs::create_dir_all(format!(".git/objects/{}", &hash_str[..2]))
+                    .context("creat_dir")?;
                 let mut f = fs::OpenOptions::new()
                     .write(true)
                     .create(true)
@@ -226,9 +223,6 @@ fn hash_object_blob(file_content: &[u8]) -> anyhow::Result<[u8; 40]> {
 }
 
 fn visit_dirs(dir: &Path, cb: &mut impl FnMut(&DirEntry)) -> anyhow::Result<()> {
-    for j in dir.iter() {
-        println!("{}", j.to_string_lossy());
-    }
     if dir.is_dir() {
         for entry in fs::read_dir(dir)? {
             if entry.as_ref().unwrap().file_name().to_str().unwrap() == ".git" {

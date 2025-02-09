@@ -84,12 +84,16 @@ fn main() -> anyhow::Result<()> {
             let mut file = fs::File::open(object)?;
             let mut file_content = Vec::new();
             file.read_to_end(&mut file_content)?;
-            let hash_str = hash_object_blob(&file_content)?;
-            println!("{}", &hash_str);
+            let hash = hash_object_blob(&file_content)?;
+            let hash_str = String::from_utf8_lossy(&hash[..]);
+            println!("{}", hash_str);
             if *write == true {
                 let compressed = compress_object_blob(&file_content)?;
-                fs::create_dir_all(format!(".git/objects/{}", &hash_str[..2]))
-                    .context("creat_dir")?;
+                fs::create_dir_all(format!(
+                    ".git/objects/{}",
+                    &hash_str[..2]
+                ))
+                .context("creat_dir")?;
                 let mut f = fs::OpenOptions::new()
                     .write(true)
                     .create(true)
@@ -177,9 +181,9 @@ fn main() -> anyhow::Result<()> {
             }
         }
         Commands::WriteTree => {
-            //let mut entry_and_sha: Vec<TreeFileObject> = vec![];
+            // let mut entry_and_sha: Vec<TreeFileObject> = vec![];
             let mut entry_and_sha: Vec<String> = vec![];
-            visit_dirs(Path::new("."), &mut|x| {
+            visit_dirs(Path::new("."), &mut |x| {
                 entry_and_sha.push(x.file_name().into_string().unwrap())
             })?;
             for x in entry_and_sha.iter() {
@@ -192,8 +196,8 @@ fn main() -> anyhow::Result<()> {
 }
 
 enum TreeFileObject<'a> {
-    Tree(&'a Path, Vec<u8>, [u8; 40]),
-    File(&'a Path, Vec<u8>, [u8; 40]),
+    Tree(&'a Path, [u8; 40]),
+    File(&'a Path, [u8; 40]),
 }
 
 fn compress_object_blob(file_content: &[u8]) -> anyhow::Result<Vec<u8>> {
@@ -222,6 +226,9 @@ fn hash_object_blob(file_content: &[u8]) -> anyhow::Result<[u8; 40]> {
 }
 
 fn visit_dirs(dir: &Path, cb: &mut impl FnMut(&DirEntry)) -> anyhow::Result<()> {
+    for j in dir.iter() {
+        println!("{}", j.to_string_lossy());
+    }
     if dir.is_dir() {
         for entry in fs::read_dir(dir)? {
             if entry.as_ref().unwrap().file_name().to_str().unwrap() == ".git" {
